@@ -189,7 +189,7 @@ private fun InfoRow(label: String, value: String) {
 private fun CandleChart(timeframe: String) {
     val context = LocalContext.current
     AndroidView(
-        modifier = Modifier.fillMaxWidth().weight(1f).background(PANEL, RoundedCornerShape(14.dp)),
+        modifier = Modifier.fillMaxWidth().height(520.dp).background(PANEL, RoundedCornerShape(14.dp)),
         factory = {
             WebView(context).apply {
                 setBackgroundColor(AColor.rgb(17, 26, 40))
