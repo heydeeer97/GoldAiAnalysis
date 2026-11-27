@@ -15,18 +15,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Download repository
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Install Java
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      # 3. Install Android SDK and accept licenses
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
         with:
@@ -34,7 +31,6 @@ jobs:
           log-accepted-android-sdk-licenses: false
           packages: platform-tools
 
-      # 4. Extract Android project
       - name: Extract Android project
         shell: bash
         run: |
@@ -42,36 +38,36 @@ jobs:
 
           ZIP_FILE="GoldAIAnalyst_Android_Starter.zip"
 
-          if [ ! -f "$ZIP_FILE" ]; then
-            echo "ERROR: Android project ZIP not found!"
+          test -f "$ZIP_FILE" || {
+            echo "Android project ZIP not found!"
             exit 1
-          fi
+          }
 
           mkdir -p project
           unzip -q "$ZIP_FILE" -d project
 
           echo "Android project extracted!"
 
-      # 5. Apply source code and manifest
       - name: Apply MainActivity and Manifest
         shell: bash
         run: |
           set -e
 
-          MAIN=$(find project -type f -name "MainActivity.kt" | head -n 1)
+          MAIN=$(find project -type f \
+            -name "MainActivity.kt" | head -n 1)
 
           MANIFEST=$(find project -type f \
             -path "*/src/main/AndroidManifest.xml" | head -n 1)
 
-          if [ -z "$MAIN" ]; then
-            echo "ERROR: MainActivity.kt not found!"
+          test -n "$MAIN" || {
+            echo "MainActivity.kt not found!"
             exit 1
-          fi
+          }
 
-          if [ -z "$MANIFEST" ]; then
-            echo "ERROR: AndroidManifest.xml not found!"
+          test -n "$MANIFEST" || {
+            echo "AndroidManifest.xml not found!"
             exit 1
-          fi
+          }
 
           test -f overrides/MainActivity.kt
           test -f overrides/AndroidManifest.xml
@@ -79,9 +75,8 @@ jobs:
           cp overrides/MainActivity.kt "$MAIN"
           cp overrides/AndroidManifest.xml "$MANIFEST"
 
-          echo "Android source files updated!"
+          echo "Source files updated!"
 
-      # 6. Install launcher icons
       - name: Install Gold AI Launcher Icons
         shell: bash
         run: |
@@ -89,39 +84,37 @@ jobs:
 
           ICON_ZIP="GoldAI_Launcher_Icons.zip"
 
-          if [ ! -f "$ICON_ZIP" ]; then
-            echo "ERROR: Launcher icons ZIP not found!"
+          test -f "$ICON_ZIP" || {
+            echo "Icons ZIP not found!"
             exit 1
-          fi
+          }
 
           mkdir -p icon_package
-
           unzip -q "$ICON_ZIP" -d icon_package
 
           RES_SOURCE="icon_package/overrides/res"
 
-          if [ ! -d "$RES_SOURCE" ]; then
-            echo "ERROR: Icon resources not found!"
+          test -d "$RES_SOURCE" || {
+            echo "Icon resources not found!"
             exit 1
-          fi
+          }
 
-          RES_TARGET=$(find project -type d \
-            -path "*/src/main/res" | head -n 1)
+          MANIFEST=$(find project -type f \
+            -path "*/src/main/AndroidManifest.xml" | head -n 1)
 
-          if [ -z "$RES_TARGET" ]; then
-            echo "ERROR: Android res directory not found!"
+          test -n "$MANIFEST" || {
+            echo "Manifest not found!"
             exit 1
-          fi
+          }
+
+          RES_TARGET="$(dirname "$MANIFEST")/res"
+
+          mkdir -p "$RES_TARGET"
 
           for density in mdpi hdpi xhdpi xxhdpi xxxhdpi
           do
             SOURCE="$RES_SOURCE/mipmap-$density"
             TARGET="$RES_TARGET/mipmap-$density"
-
-            if [ ! -d "$SOURCE" ]; then
-              echo "Missing icon directory: $SOURCE"
-              exit 1
-            fi
 
             mkdir -p "$TARGET"
 
@@ -129,26 +122,26 @@ jobs:
             cp "$SOURCE/ic_launcher_round.png" "$TARGET/"
           done
 
-          echo "All 10 launcher icons installed!"
+          echo "All 10 icons installed!"
 
-      # 7. Verify launcher icons
-      - name: Verify launcher icons
+      - name: Verify Android resources
         shell: bash
         run: |
           set -e
 
-          RES=$(find project -type d \
-            -path "*/src/main/res" | head -n 1)
+          MANIFEST=$(find project -type f \
+            -path "*/src/main/AndroidManifest.xml" | head -n 1)
+
+          RES="$(dirname "$MANIFEST")/res"
 
           for density in mdpi hdpi xhdpi xxhdpi xxxhdpi
           do
-            test -f "$RES/mipmap-$density/ic_launcher.png"
-            test -f "$RES/mipmap-$density/ic_launcher_round.png"
+            test -s "$RES/mipmap-$density/ic_launcher.png"
+            test -s "$RES/mipmap-$density/ic_launcher_round.png"
           done
 
-          echo "Icon verification successful!"
+          echo "All launcher icons verified!"
 
-      # 8. Build Android APK
       - name: Build APK
         shell: bash
         run: |
@@ -157,10 +150,10 @@ jobs:
           GRADLE=$(find project -type f \
             -name gradlew | head -n 1)
 
-          if [ -z "$GRADLE" ]; then
-            echo "ERROR: Gradle wrapper not found!"
+          test -n "$GRADLE" || {
+            echo "Gradle wrapper not found!"
             exit 1
-          fi
+          }
 
           cd "$(dirname "$GRADLE")"
 
@@ -168,7 +161,6 @@ jobs:
 
           ./gradlew assembleDebug --no-daemon
 
-      # 9. Upload APK
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
