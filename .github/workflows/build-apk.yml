@@ -29,6 +29,11 @@ jobs:
       - name: Extract Android project
         run: unzip -q GoldAIAnalyst_Android_Starter.zip
 
+      - name: Apply updated Android files
+        run: |
+          cp overrides/MainActivity.kt GoldAIAnalyst/app/src/main/java/com/goldai/analyst/MainActivity.kt
+          cp overrides/AndroidManifest.xml GoldAIAnalyst/app/src/main/AndroidManifest.xml
+
       - name: Fix JVM compatibility
         run: |
           python3 - <<'PY'
