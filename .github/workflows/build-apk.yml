@@ -34,6 +34,12 @@ jobs:
           cp overrides/MainActivity.kt GoldAIAnalyst/app/src/main/java/com/goldai/analyst/MainActivity.kt
           cp overrides/AndroidManifest.xml GoldAIAnalyst/app/src/main/AndroidManifest.xml
 
+      - name: Install launcher icons
+        run: |
+          mkdir -p launcher_icons
+          unzip -q GoldAI_Launcher_Icons.zip -d launcher_icons
+          cp -R launcher_icons/overrides/res/. GoldAIAnalyst/app/src/main/res/
+
       - name: Fix JVM compatibility
         run: |
           python3 - <<'PY'
