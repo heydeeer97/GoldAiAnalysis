@@ -29,85 +29,71 @@ jobs:
         with:
           accept-android-sdk-licenses: true
           log-accepted-android-sdk-licenses: false
-          packages: platform-tools
+          packages: |
+            platform-tools
+            platforms;android-35
+            build-tools;35.0.0
+
+      - name: Setup Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
 
       - name: Extract Android project
         shell: bash
         run: |
           set -e
 
-          ZIP_FILE="GoldAIAnalyst_Android_Starter.zip"
-
-          test -f "$ZIP_FILE" || {
-            echo "Android project ZIP not found!"
-            exit 1
-          }
+          test -f GoldAIAnalyst_Android_Starter.zip
 
           mkdir -p project
-          unzip -q "$ZIP_FILE" -d project
+          unzip -q GoldAIAnalyst_Android_Starter.zip -d project
 
-          echo "Android project extracted!"
+          SETTINGS=$(find project -type f \
+            -name settings.gradle.kts | head -n 1)
 
-      - name: Apply MainActivity and Manifest
+          if [ -z "$SETTINGS" ]; then
+            echo "ERROR: settings.gradle.kts not found"
+            exit 1
+          fi
+
+          PROJECT_DIR=$(dirname "$SETTINGS")
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+          echo "Project found: $PROJECT_DIR"
+
+      - name: Apply MainActivity override
         shell: bash
         run: |
           set -e
 
-          MAIN=$(find project -type f \
-            -name "MainActivity.kt" | head -n 1)
+          if [ -f overrides/MainActivity.kt ]; then
+            MAIN=$(find "$PROJECT_DIR/app/src/main" \
+              -type f -name MainActivity.kt | head -n 1)
 
-          MANIFEST=$(find project -type f \
-            -path "*/src/main/AndroidManifest.xml" | head -n 1)
-
-          test -n "$MAIN" || {
-            echo "MainActivity.kt not found!"
-            exit 1
-          }
-
-          test -n "$MANIFEST" || {
-            echo "AndroidManifest.xml not found!"
-            exit 1
-          }
-
-          test -f overrides/MainActivity.kt
-          test -f overrides/AndroidManifest.xml
-
-          cp overrides/MainActivity.kt "$MAIN"
-          cp overrides/AndroidManifest.xml "$MANIFEST"
-
-          echo "Source files updated!"
+            if [ -n "$MAIN" ]; then
+              cp overrides/MainActivity.kt "$MAIN"
+              echo "MainActivity updated"
+            fi
+          else
+            echo "Using MainActivity from starter project"
+          fi
 
       - name: Install Gold AI Launcher Icons
         shell: bash
         run: |
           set -e
 
-          ICON_ZIP="GoldAI_Launcher_Icons.zip"
-
-          test -f "$ICON_ZIP" || {
-            echo "Icons ZIP not found!"
-            exit 1
-          }
+          test -f GoldAI_Launcher_Icons.zip
 
           mkdir -p icon_package
-          unzip -q "$ICON_ZIP" -d icon_package
+          unzip -q GoldAI_Launcher_Icons.zip -d icon_package
 
           RES_SOURCE="icon_package/overrides/res"
+          RES_TARGET="$PROJECT_DIR/app/src/main/res"
 
-          test -d "$RES_SOURCE" || {
-            echo "Icon resources not found!"
-            exit 1
-          }
-
-          MANIFEST=$(find project -type f \
-            -path "*/src/main/AndroidManifest.xml" | head -n 1)
-
-          test -n "$MANIFEST" || {
-            echo "Manifest not found!"
-            exit 1
-          }
-
-          RES_TARGET="$(dirname "$MANIFEST")/res"
+          test -d "$RES_SOURCE"
 
           mkdir -p "$RES_TARGET"
 
@@ -115,6 +101,9 @@ jobs:
           do
             SOURCE="$RES_SOURCE/mipmap-$density"
             TARGET="$RES_TARGET/mipmap-$density"
+
+            test -s "$SOURCE/ic_launcher.png"
+            test -s "$SOURCE/ic_launcher_round.png"
 
             mkdir -p "$TARGET"
 
@@ -124,15 +113,50 @@ jobs:
 
           echo "All 10 icons installed!"
 
+      - name: Configure Android Manifest
+        shell: bash
+        run: |
+          set -e
+
+          MANIFEST="$PROJECT_DIR/app/src/main/AndroidManifest.xml"
+
+          test -f "$MANIFEST"
+
+          python3 - "$MANIFEST" <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+
+          path = sys.argv[1]
+          ET.register_namespace(
+              "android",
+              "http://schemas.android.com/apk/res/android"
+          )
+
+          tree = ET.parse(path)
+          root = tree.getroot()
+
+          ns = "{http://schemas.android.com/apk/res/android}"
+          app = root.find("application")
+
+          if app is None:
+              raise SystemExit("Application tag not found")
+
+          app.set(ns + "icon", "@mipmap/ic_launcher")
+          app.set(ns + "roundIcon", "@mipmap/ic_launcher_round")
+          app.set(ns + "label", "Gold AI Analyst")
+
+          ET.indent(tree, space="    ")
+          tree.write(path, encoding="utf-8", xml_declaration=True)
+
+          print("Manifest configured successfully")
+          PY
+
       - name: Verify Android resources
         shell: bash
         run: |
           set -e
 
-          MANIFEST=$(find project -type f \
-            -path "*/src/main/AndroidManifest.xml" | head -n 1)
-
-          RES="$(dirname "$MANIFEST")/res"
+          RES="$PROJECT_DIR/app/src/main/res"
 
           for density in mdpi hdpi xhdpi xxhdpi xxxhdpi
           do
@@ -140,26 +164,23 @@ jobs:
             test -s "$RES/mipmap-$density/ic_launcher_round.png"
           done
 
-          echo "All launcher icons verified!"
+          grep -q 'android:icon="@mipmap/ic_launcher"' \
+            "$PROJECT_DIR/app/src/main/AndroidManifest.xml"
+
+          echo "All resources verified!"
 
       - name: Build APK
         shell: bash
         run: |
           set -e
 
-          GRADLE=$(find project -type f \
-            -name gradlew | head -n 1)
+          cd "$PROJECT_DIR"
 
-          test -n "$GRADLE" || {
-            echo "Gradle wrapper not found!"
-            exit 1
-          }
+          gradle --version
 
-          cd "$(dirname "$GRADLE")"
-
-          chmod +x gradlew
-
-          ./gradlew assembleDebug --no-daemon
+          gradle assembleDebug \
+            --no-daemon \
+            --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
