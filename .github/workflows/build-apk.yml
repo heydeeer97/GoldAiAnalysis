@@ -7,6 +7,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -15,81 +18,112 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Java
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.9'
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
       - name: Extract Android project
-        run: unzip -q GoldAIAnalyst_Android_Starter.zip
-
-      - name: Apply updated Android files
+        shell: bash
         run: |
-          cp overrides/MainActivity.kt GoldAIAnalyst/app/src/main/java/com/goldai/analyst/MainActivity.kt
-          cp overrides/AndroidManifest.xml GoldAIAnalyst/app/src/main/AndroidManifest.xml
+          set -e
 
-      - name: Install launcher icons
+          ZIP_FILE="GoldAIAnalyst_Android_Starter.zip"
+
+          if [ ! -f "$ZIP_FILE" ]; then
+            echo "Android project ZIP not found!"
+            exit 1
+          fi
+
+          mkdir -p project
+          unzip -q "$ZIP_FILE" -d project
+
+      - name: Apply MainActivity and Manifest
+        shell: bash
         run: |
-          mkdir -p launcher_icons
-          unzip -q GoldAI_Launcher_Icons.zip -d launcher_icons
-          cp -R launcher_icons/overrides/res/. GoldAIAnalyst/app/src/main/res/
+          set -e
 
-      - name: Validate Android Manifest
+          MAIN=$(find project -type f -name "MainActivity.kt" | head -n 1)
+          MANIFEST=$(find project -type f -path "*/src/main/AndroidManifest.xml" | head -n 1)
+
+          if [ -z "$MAIN" ] || [ -z "$MANIFEST" ]; then
+            echo "Android source files not found!"
+            exit 1
+          fi
+
+          if [ ! -f "overrides/MainActivity.kt" ]; then
+            echo "MainActivity override not found!"
+            exit 1
+          fi
+
+          if [ ! -f "overrides/AndroidManifest.xml" ]; then
+            echo "Manifest override not found!"
+            exit 1
+          fi
+
+          cp overrides/MainActivity.kt "$MAIN"
+          cp overrides/AndroidManifest.xml "$MANIFEST"
+
+      - name: Install Gold AI Launcher Icons
+        shell: bash
         run: |
-          echo "=== OVERRIDE MANIFEST ==="
-          cat overrides/AndroidManifest.xml
+          set -e
 
-          echo "=== PROJECT MANIFEST ==="
-          cat GoldAIAnalyst/app/src/main/AndroidManifest.xml
+          ICON_ZIP="GoldAI_Launcher_Icons.zip"
 
-          python3 - <<'PY'
-          import xml.etree.ElementTree as ET
+          if [ ! -f "$ICON_ZIP" ]; then
+            echo "Launcher icons ZIP not found!"
+            exit 1
+          fi
 
-          ET.parse("overrides/AndroidManifest.xml")
-          ET.parse("GoldAIAnalyst/app/src/main/AndroidManifest.xml")
+          mkdir -p icon_package
+          unzip -q "$ICON_ZIP" -d icon_package
 
-          print("BOTH MANIFEST FILES ARE VALID XML")
-          PY
+          RES_SOURCE="icon_package/overrides/res"
 
-      - name: Fix JVM compatibility
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
+          if [ ! -d "$RES_SOURCE" ]; then
+            echo "Icon resources not found!"
+            exit 1
+          fi
 
-          p = Path("GoldAIAnalyst/app/build.gradle.kts")
-          s = p.read_text()
+          RES_TARGET=$(find project -type d -path "*/src/main/res" | head -n 1)
 
-          patch = '''
-              compileOptions {
-                  sourceCompatibility = JavaVersion.VERSION_17
-                  targetCompatibility = JavaVersion.VERSION_17
-              }
-              kotlinOptions {
-                  jvmTarget = "17"
-              }
-          '''
+          if [ -z "$RES_TARGET" ]; then
+            echo "Android res directory not found!"
+            exit 1
+          fi
 
-          if 'jvmTarget' not in s:
-              s = s.replace(
-                  '    compileSdk = 35',
-                  '    compileSdk = 35\n' + patch
-              )
-              p.write_text(s)
-          PY
+          cp -R "$RES_SOURCE"/mipmap-* "$RES_TARGET"/
+
+          test -f "$RES_TARGET/mipmap-mdpi/ic_launcher.png"
+          test -f "$RES_TARGET/mipmap-xxxhdpi/ic_launcher.png"
+
+          echo "Gold AI Analyst icons installed successfully!"
 
       - name: Build APK
+        shell: bash
         run: |
-          cd GoldAIAnalyst
-          gradle assembleDebug --stacktrace --info
+          set -e
+
+          GRADLE=$(find project -type f -name gradlew | head -n 1)
+
+          if [ -z "$GRADLE" ]; then
+            echo "Gradle wrapper not found!"
+            exit 1
+          fi
+
+          cd "$(dirname "$GRADLE")"
+
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Gold-AI-Analyst-APK
-          path: GoldAIAnalyst/app/build/outputs/apk/debug/app-debug.apk
+          path: project/**/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
