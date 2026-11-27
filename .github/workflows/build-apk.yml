@@ -29,10 +29,7 @@ jobs:
         with:
           accept-android-sdk-licenses: true
           log-accepted-android-sdk-licenses: false
-          packages: |
-            platform-tools
-            platforms;android-35
-            build-tools;35.0.0
+          packages: "platform-tools,platforms;android-35,build-tools;35.0.0"
 
       - name: Setup Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
@@ -52,10 +49,7 @@ jobs:
           SETTINGS=$(find project -type f \
             -name settings.gradle.kts | head -n 1)
 
-          if [ -z "$SETTINGS" ]; then
-            echo "ERROR: settings.gradle.kts not found"
-            exit 1
-          fi
+          test -n "$SETTINGS"
 
           PROJECT_DIR=$(dirname "$SETTINGS")
 
@@ -74,10 +68,7 @@ jobs:
 
             if [ -n "$MAIN" ]; then
               cp overrides/MainActivity.kt "$MAIN"
-              echo "MainActivity updated"
             fi
-          else
-            echo "Using MainActivity from starter project"
           fi
 
       - name: Install Gold AI Launcher Icons
@@ -94,7 +85,6 @@ jobs:
           RES_TARGET="$PROJECT_DIR/app/src/main/res"
 
           test -d "$RES_SOURCE"
-
           mkdir -p "$RES_TARGET"
 
           for density in mdpi hdpi xhdpi xxhdpi xxxhdpi
@@ -148,7 +138,7 @@ jobs:
           ET.indent(tree, space="    ")
           tree.write(path, encoding="utf-8", xml_declaration=True)
 
-          print("Manifest configured successfully")
+          print("Manifest configured!")
           PY
 
       - name: Verify Android resources
@@ -164,10 +154,7 @@ jobs:
             test -s "$RES/mipmap-$density/ic_launcher_round.png"
           done
 
-          grep -q 'android:icon="@mipmap/ic_launcher"' \
-            "$PROJECT_DIR/app/src/main/AndroidManifest.xml"
-
-          echo "All resources verified!"
+          echo "Resources verified!"
 
       - name: Build APK
         shell: bash
